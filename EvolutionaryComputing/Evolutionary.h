@@ -3,6 +3,7 @@
 #include <array>
 #include <cmath>
 #include <functional>
+#include <numeric>
 #include <random>
 #include <utility>
 #include <vector>
@@ -46,25 +47,25 @@ namespace evolutionary
         template<typename _Compare>
         decltype(auto) Sort(
             _VectorType<_ValueType>& _Fitness,
-            _VectorType<_VectorType<_ValueType>>& _Domain,
+            _VectorType<_VectorType<_ValueType>>& _Population,
             _Compare _Comp)
         {
             _VectorType<std::pair<_ValueType, std::reference_wrapper<_VectorType<_ValueType>>>> _Pair;
             _Pair.reserve(_Fitness.size());
 
-            std::transform(std::begin(_Fitness), std::end(_Fitness), std::begin(_Domain), std::back_inserter(_Pair),
+            std::transform(std::begin(_Fitness), std::end(_Fitness), std::begin(_Population), std::back_inserter(_Pair),
                 std::make_pair<std::reference_wrapper<_ValueType>, std::reference_wrapper<_VectorType<_ValueType>>>);
 
             std::sort(std::begin(_Pair), std::end(_Pair),
                 [_Comp](auto&& _Left, auto&& _Right) { return _Comp(_Left.first, _Right.first); });
 
-            _VectorType<std::reference_wrapper<_VectorType<_ValueType>>> _SortDomain;
-            _SortDomain.reserve(_Fitness.size());
+            _VectorType<std::reference_wrapper<_VectorType<_ValueType>>> _SortPopulation;
+            _SortPopulation.reserve(_Fitness.size());
 
-            std::transform(std::begin(_Pair), std::end(_Pair), std::back_inserter(_SortDomain),
+            std::transform(std::begin(_Pair), std::end(_Pair), std::back_inserter(_SortPopulation),
                 [](auto&& _Value) { return _Value.second; });
 
-            return _SortDomain;
+            return _SortPopulation;
         }
 
         template<typename _ForwardIterator, typename _DistributionType>
@@ -72,10 +73,7 @@ namespace evolutionary
         {
             std::for_each(_First, _Last, [&](_VectorType<_ValueType>& _Vector)
             {
-                std::generate(std::begin(_Vector), std::end(_Vector), [&]
-                {
-                    return _Distribution(this->_Engine);
-                });
+                std::generate(std::begin(_Vector), std::end(_Vector), std::bind(_Distribution, std::ref(_Engine)));
             });
         }
 
@@ -133,12 +131,14 @@ namespace evolutionary
             _BaseType(_Min, _Max, std::forward<_Args>(__args)...),
             _Population(_Count, _VectorType<_ValueType>(_Dimension)),
             _Candidate(_Dimension),
+            _PopulationShuffle(_Count),
             _IndexDistribution(_SizeType(0), _Count - 1),
             _DimensionDistribution(_SizeType(0), _Dimension - 1),
             _CrossoverDistribution(_CrossoverProbability),
             _MutationFactor(_DifferentialWeight)
         {
             Reset(std::begin(_Population), std::end(_Population), _DomainUniform);
+            std::iota(std::begin(_PopulationShuffle), std::end(_PopulationShuffle), _SizeType(0));
         }
 
         void Perturbing(_SizeType _Size) override
@@ -152,42 +152,37 @@ namespace evolutionary
 
         void Update() override
         {
-            using namespace std::placeholders;
-            std::array<_SizeType, 4> _RandomIndex;
+            std::shuffle(std::begin(_PopulationShuffle), std::end(_PopulationShuffle), _Engine);
 
-            auto&& _First = std::begin(_RandomIndex);
-            auto&& _Last = std::end(_RandomIndex);
-            for (auto _Middle = _First; _Middle != _Last;)
+            auto&& _Count = _Population.size();
+            for (decltype(_Count) _Index = 0; _Index < _Count; ++_Index)
             {
-                auto&& _Index = _IndexDistribution(_Engine);
-                if (std::all_of(_First, _Middle, std::bind(std::not_equal_to<_SizeType>(), _1, _Index)))
+                auto&& _PopulationIndex = _PopulationShuffle[_Index];
+                auto&& _RandomArray = GetRandomArray(_PopulationIndex);
+
+                auto&& _Original = _Population[_PopulationIndex];
+                auto&& _A = _Population[_RandomArray[0]];
+                auto&& _B = _Population[_RandomArray[1]];
+                auto&& _C = _Population[_RandomArray[2]];
+
+                auto&& _DimensionSelect = _DimensionDistribution(_Engine);
+                auto&& _DimensionCount = _Candidate.size();
+                for (decltype(_DimensionCount) _Dimension(0); _Dimension < _DimensionCount; ++_Dimension)
                 {
-                    *_Middle++ = _Index;
+                    auto&& _CrossoverBool = _CrossoverDistribution(_Engine);
+                    auto&& _DimensionBool = _DimensionSelect == _Dimension;
+                    auto&& _TotelBool = _CrossoverBool || _DimensionBool;
+
+                    _Candidate[_Dimension] =
+                        _TotelBool ? _A[_Dimension] + _MutationFactor * (_B[_Dimension] - _C[_Dimension]) : _Original[_Dimension];
                 }
-            }
 
-            auto&& _Original = _Population[_RandomIndex[0]];
-            auto&& _A = _Population[_RandomIndex[1]];
-            auto&& _B = _Population[_RandomIndex[2]];
-            auto&& _C = _Population[_RandomIndex[3]];
-
-            auto&& _DimensionSelect = _DimensionDistribution(_Engine);
-            auto&& _DimensionCount = _Candidate.size();
-            for (decltype(_DimensionCount) _Dimension(0); _Dimension < _DimensionCount; ++_Dimension)
-            {
-                auto&& _CrossoverBool = _CrossoverDistribution(_Engine);
-                auto&& _DimensionBool = _DimensionSelect == _Dimension;
-                auto&& _TotelBool = _CrossoverBool || _DimensionBool;
-
-                _Candidate[_Dimension] =
-                    _TotelBool ? _A[_Dimension] + _MutationFactor * (_B[_Dimension] - _C[_Dimension]) : _Original[_Dimension];
-            }
-
-            auto&& _OriginalFitness = FitnessFunction(_Original);
-            auto&& _CandidateFitness = FitnessFunction(_Candidate);
-            if (_ComparisonType()(_CandidateFitness, _OriginalFitness))
-            {
-                std::swap(_Original, _Candidate);
+                auto&& _OriginalFitness = FitnessFunction(_Original);
+                auto&& _CandidateFitness = FitnessFunction(_Candidate);
+                if (_ComparisonType()(_CandidateFitness, _OriginalFitness))
+                {
+                    std::swap(_Original, _Candidate);
+                }
             }
         }
 
@@ -199,11 +194,36 @@ namespace evolutionary
     private:
         _VectorType<_VectorType<_ValueType>> _Population;
         _VectorType<_ValueType> _Candidate;
+        _VectorType<_SizeType> _PopulationShuffle;
 
         std::uniform_int_distribution<_SizeType> _IndexDistribution;
         std::uniform_int_distribution<_SizeType> _DimensionDistribution;
         std::bernoulli_distribution _CrossoverDistribution;
         _ValueType _MutationFactor;
+
+        decltype(auto) GetRandomArray(_SizeType _PopulationIndex)
+        {
+            using namespace std::placeholders;
+            std::array<_SizeType, 3> _RandomIndex;
+
+            auto&& _First = std::begin(_RandomIndex);
+            auto&& _Last = std::end(_RandomIndex);
+            auto _Middle = _First;
+
+            while(_Middle != _Last)
+            {
+                auto&& _Index = _IndexDistribution(_Engine);
+                if (_PopulationIndex != _Index)
+                {
+                    if (std::all_of(_First, _Middle, std::bind(std::not_equal_to<_SizeType>(), _1, _Index)))
+                    {
+                        *_Middle++ = _Index;
+                    }
+                }
+            }
+
+            return _RandomIndex;
+        }
     };
 
     template<typename... _BaseArgs>
