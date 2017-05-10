@@ -35,6 +35,7 @@ namespace evolutionary
         {
         }
 
+        // Do not use
         decltype(auto) Fitness(const _VectorType<_VectorType<_ValueType>>& _Domain)
         {
             _VectorType<_ValueType> _Fitness(_Domain.size());
@@ -45,27 +46,25 @@ namespace evolutionary
 
         // There may be a better way
         template<typename _Compare>
-        decltype(auto) Sort(
+        void Sort(
             _VectorType<_ValueType>& _Fitness,
             _VectorType<_VectorType<_ValueType>>& _Population,
             _Compare _Comp)
         {
-            _VectorType<std::pair<_ValueType, std::reference_wrapper<_VectorType<_ValueType>>>> _Pair;
-            _Pair.reserve(_Fitness.size());
+            _VectorType<std::pair<_ValueType, _VectorType<_ValueType>>> _PairVector;
+            _PairVector.reserve(_Fitness.size());
 
-            std::transform(std::begin(_Fitness), std::end(_Fitness), std::begin(_Population), std::back_inserter(_Pair),
+            std::transform(std::begin(_Fitness), std::end(_Fitness), std::begin(_Population), std::back_inserter(_PairVector),
                 std::make_pair<std::reference_wrapper<_ValueType>, std::reference_wrapper<_VectorType<_ValueType>>>);
 
-            std::sort(std::begin(_Pair), std::end(_Pair),
-                [_Comp](auto&& _Left, auto&& _Right) { return _Comp(_Left.first, _Right.first); });
+            std::sort(std::begin(_PairVector), std::end(_PairVector),
+                [&](auto&& _Left, auto&& _Right) { return _Comp(_Left.first, _Right.first); });
 
-            _VectorType<std::reference_wrapper<_VectorType<_ValueType>>> _SortPopulation;
-            _SortPopulation.reserve(_Fitness.size());
+            std::transform(std::begin(_PairVector), std::end(_PairVector), std::begin(_Fitness),
+                [](auto&& _Pair) { return _Pair.first; });
 
-            std::transform(std::begin(_Pair), std::end(_Pair), std::back_inserter(_SortPopulation),
-                [](auto&& _Value) { return _Value.second; });
-
-            return _SortPopulation;
+            std::transform(std::begin(_PairVector), std::end(_PairVector), std::begin(_Population),
+                [](auto&& _Pair) { return _Pair.second; });
         }
 
         template<typename _ForwardIterator, typename _DistributionType>
@@ -108,7 +107,6 @@ namespace evolutionary
         using _BaseType::_DomainUniform;
         using _BaseType::FitnessFunction;
         using _BaseType::_Engine;
-        using _BaseType::Fitness;
         using _BaseType::Sort;
         using _BaseType::Reset;
         using _BaseType::Search;
@@ -144,10 +142,14 @@ namespace evolutionary
         void Perturbing(_SizeType _Size) override
         {
             using namespace std::placeholders;
-            auto&& _Fitness = Fitness(_Population);
-            auto&& _Sort = Sort(_Fitness, _Population, std::bind(std::logical_not<>(), std::bind(_ComparisonType(), _1, _2)));
 
-            Reset(std::begin(_Sort), std::next(std::begin(_Sort), _Size), _DomainUniform);
+            _VectorType<_ValueType> _Fitness(_Population.size());
+            std::transform(std::begin(_Population), std::end(_Population), std::begin(_Fitness), FitnessFunction);
+
+            Sort(_Fitness, _Population, _ComparisonType());
+            std::reverse(std::begin(_Population), std::end(_Population));
+
+            Reset(std::begin(_Population), std::next(std::begin(_Population), _Size), _DomainUniform);
         }
 
         void Update() override
@@ -158,12 +160,12 @@ namespace evolutionary
             for (decltype(_Count) _Index = 0; _Index < _Count; ++_Index)
             {
                 auto&& _PopulationIndex = _PopulationShuffle[_Index];
-                auto&& _RandomArray = GetRandomArray(_PopulationIndex);
+                auto&& _Random = GetRandomArray(_PopulationIndex);
 
                 auto&& _Original = _Population[_PopulationIndex];
-                auto&& _A = _Population[_RandomArray[0]];
-                auto&& _B = _Population[_RandomArray[1]];
-                auto&& _C = _Population[_RandomArray[2]];
+                auto&& _A = _Population[_Random[0]];
+                auto&& _B = _Population[_Random[1]];
+                auto&& _C = _Population[_Random[2]];
 
                 auto&& _DimensionSelect = _DimensionDistribution(_Engine);
                 auto&& _DimensionCount = _Candidate.size();
@@ -204,13 +206,13 @@ namespace evolutionary
         decltype(auto) GetRandomArray(_SizeType _PopulationIndex)
         {
             using namespace std::placeholders;
-            std::array<_SizeType, 3> _RandomIndex;
+            std::array<_SizeType, 3> _Random;
 
-            auto&& _First = std::begin(_RandomIndex);
-            auto&& _Last = std::end(_RandomIndex);
+            auto&& _First = std::begin(_Random);
+            auto&& _Last = std::end(_Random);
             auto _Middle = _First;
 
-            while(_Middle != _Last)
+            while (_Middle != _Last)
             {
                 auto&& _Index = _IndexDistribution(_Engine);
                 if (_PopulationIndex != _Index)
@@ -222,7 +224,7 @@ namespace evolutionary
                 }
             }
 
-            return _RandomIndex;
+            return _Random;
         }
     };
 
@@ -234,7 +236,6 @@ namespace evolutionary
         using _BaseType::_DomainUniform;
         using _BaseType::FitnessFunction;
         using _BaseType::_Engine;
-        using _BaseType::Fitness;
         using _BaseType::Sort;
         using _BaseType::Reset;
         using _BaseType::Search;
@@ -283,10 +284,14 @@ namespace evolutionary
         void Perturbing(_SizeType _Size) override
         {
             using namespace std::placeholders;
-            auto&& _Fitness = Fitness(_Position);
-            auto&& _Sort = Sort(_Fitness, _Position, std::bind(std::logical_not<>(), std::bind(_ComparisonType(), _1, _2)));
 
-            Reset(std::begin(_Sort), std::next(std::begin(_Sort), _Size), _DomainUniform);
+            _VectorType<_ValueType> _Fitness(_Position.size());
+            std::transform(std::begin(_Position), std::end(_Position), std::begin(_Fitness), FitnessFunction);
+
+            Sort(_Fitness, _Position, _ComparisonType());
+            std::reverse(std::begin(_Position), std::end(_Position));
+
+            Reset(std::begin(_Position), std::next(std::begin(_Position), _Size), _DomainUniform);
 
             // Unfinished
         }
@@ -373,7 +378,6 @@ namespace evolutionary
         using _BaseType::_DomainUniform;
         using _BaseType::FitnessFunction;
         using _BaseType::_Engine;
-        using _BaseType::Fitness;
         using _BaseType::Sort;
         using _BaseType::Reset;
         using _BaseType::Search;
@@ -387,8 +391,9 @@ namespace evolutionary
         GeneticAlgorithm(
             _SizeType _PopulationSize,
             _SizeType _Dimension,
-            _SizeType _EncodingLength,
+            _SizeType _ElitismSize,
             double _CrossoverRate,
+            double _MutationRate,
             _ValueType _Min,
             _ValueType _Max,
             _Args&&... __args
@@ -396,33 +401,37 @@ namespace evolutionary
             _BaseType(_Min, _Max, std::forward<_Args>(__args)...),
             _Parent(_PopulationSize, _VectorType<_ValueType>(_Dimension)),
             _Child(_PopulationSize, _VectorType<_ValueType>(_Dimension)),
-            _Fitness(_PopulationSize),
+            _ParentFitness(_PopulationSize),
+            _ChildFitness(_PopulationSize),
+            _Elitism(_ElitismSize),
             _Shift(_Min),
-            _Scale((_Max - _Min) / static_cast<_ValueType>(1ULL << _EncodingLength)),
             _Best(_Parent[0]),
-            _Worst(_Parent[0]),
             _CrossoverDistribution(_CrossoverRate),
-            _DimensionDistribution(_SizeType(0), _Dimension - 1),
-            _EncodingDistribution(_SizeType(0), _EncodingLength - 1)
+            _MutationDistribution(_MutationRate),
+            _DimensionDistribution(_SizeType(0), _Dimension - 1)
         {
-            Reset(std::begin(_Parent), std::end(_Parent), _DomainUniform);
+            Reset(std::begin(_Child), std::end(_Child), _DomainUniform);
+            EvaluateFitness(_SizeType(0));
         }
 
         void Perturbing(_SizeType _Size) override
         {
             using namespace std::placeholders;
-            auto&& _Sort = Sort(_Fitness, _Parent, std::bind(std::logical_not<>(), std::bind(_ComparisonType(), _1, _2)));
 
-            Reset(std::begin(_Sort), std::next(std::begin(_Sort), _Size), _DomainUniform);
+            Sort(_ParentFitness, _Parent, _ComparisonType());
+            std::reverse(std::begin(_Parent), std::end(_Parent));
+            std::reverse(std::begin(_ParentFitness), std::end(_ParentFitness));
+
+            Reset(std::begin(_Parent), std::next(std::begin(_Parent), _Size), _DomainUniform);
+            std::transform(std::begin(_Parent), std::next(std::begin(_Parent), _Size), std::begin(_ParentFitness), FitnessFunction);
         }
 
         void Update() override
         {
-            EvaluateFitness();
             RouletteWheelSelection();
             SinglePointCrossover();
             Mutation();
-            std::swap(_Parent, _Child);
+            EvaluateFitness(_Elitism);
         }
 
         std::pair<const _VectorType<_ValueType>&, _ValueType> GetGlobalExtremum(void) override
@@ -433,56 +442,46 @@ namespace evolutionary
     private:
         _VectorType<_VectorType<_ValueType>> _Parent;
         _VectorType<_VectorType<_ValueType>> _Child;
-        _VectorType<_ValueType> _Fitness;
-
+        _VectorType<_ValueType> _ParentFitness;
+        _VectorType<_ValueType> _ChildFitness;
+        
+        _SizeType _Elitism;
         _ValueType _Shift;
-        _ValueType _Scale;
 
         _ValueType _BestFitness;
-        _ValueType _WorstFitness;
         std::reference_wrapper<_VectorType<_ValueType>> _Best;
-        std::reference_wrapper<_VectorType<_ValueType>> _Worst;
 
         std::bernoulli_distribution _CrossoverDistribution;
+        std::bernoulli_distribution _MutationDistribution;
         std::uniform_int_distribution<_SizeType> _DimensionDistribution;
-        std::uniform_int_distribution<_SizeType> _EncodingDistribution;
 
-        void EvaluateFitness()
+        void EvaluateFitness(_SizeType _SwapSize)
         {
-            _BestFitness = FitnessFunction(_Parent[0]);
-            _WorstFitness = _BestFitness;
+            using namespace std::placeholders;
+            std::transform(std::begin(_Child), std::end(_Child), std::begin(_ChildFitness), FitnessFunction);
+            std::transform(std::begin(_Parent), std::end(_Parent), std::begin(_ParentFitness), FitnessFunction);
 
-            _Best = _Parent[0];
-            _Worst = _Parent[0];
+            Sort(_ChildFitness, _Child, _ComparisonType());
+            Sort(_ParentFitness, _Parent, _ComparisonType());
+            std::reverse(std::begin(_Parent), std::end(_Parent));
+            std::reverse(std::begin(_ParentFitness), std::end(_ParentFitness));
+            std::swap_ranges(std::begin(_Parent), std::prev(std::end(_Parent), _SwapSize), std::begin(_Child));
+            std::swap_ranges(std::begin(_ParentFitness), std::prev(std::end(_ParentFitness), _SwapSize), std::begin(_ChildFitness));
 
-            transform(std::begin(_Parent), std::end(_Parent), std::begin(_Fitness), [&](auto&& _Chromosome)
-            {
-                auto&& _Fitness = this->FitnessFunction(_Chromosome);
-
-                if (_ComparisonType()(_Fitness, _BestFitness))
-                {
-                    _BestFitness = _Fitness;
-                    _Best = _Chromosome;
-                }
-                else if (_ComparisonType()(_WorstFitness, _Fitness))
-                {
-                    _WorstFitness = _Fitness;
-                    _Worst = _Chromosome;
-                }
-
-                return _Fitness;
-            });
+            auto&& _BestIterator = std::min_element(std::begin(_ParentFitness), std::end(_ParentFitness), _ComparisonType());
+            _BestFitness = *_BestIterator;
+            _Best = _Parent[std::distance(std::begin(_ParentFitness), _BestIterator)];
         }
 
         void RouletteWheelSelection()
         {
             if (0 > _BestFitness)
             {
-                transform(std::begin(_Fitness), std::end(_Fitness), std::begin(_Fitness), std::negate<>());
+                std::transform(std::begin(_ParentFitness), std::end(_ParentFitness), std::begin(_ParentFitness), std::negate<>());
             }
 
             // It can't be less than 0 
-            std::discrete_distribution<_SizeType> _ParentDistribution(std::begin(_Fitness), std::end(_Fitness));
+            std::discrete_distribution<_SizeType> _ParentDistribution(std::begin(_ParentFitness), std::end(_ParentFitness));
             for (auto&& _Chromosome : _Child)
             {
                 auto&& _ParentIndex = _ParentDistribution(_Engine);
@@ -509,12 +508,10 @@ namespace evolutionary
                     auto&& _DimensionIndex = _DimensionDistribution(_Engine);
                     std::swap_ranges(std::begin(*_First), std::next(std::begin(*_First), _DimensionIndex), std::begin(*_Next));
 
-                    auto&& _Index = 1ULL << _EncodingDistribution(_Engine);
-                    auto&& _Mask = _Scale * static_cast<_ValueType>(_Index);
-
                     auto&& _FirstValue = (*_First)[_DimensionIndex];
                     auto&& _NextValue = (*_Next)[_DimensionIndex];
 
+                    auto&& _Mask = _DomainUniform(_Engine) - _Shift;
                     auto&& _FirstRemainder = fmod(_FirstValue - _Shift, _Mask);
                     auto&& _NextRemainder = fmod(_NextValue - _Shift, _Mask);
 
@@ -526,44 +523,17 @@ namespace evolutionary
 
         void Mutation()
         {
-            // Unfinished
-        }
-
-        // Do not use
-        decltype(auto) TestUnit(_ValueType _FirstValue, _ValueType _NextValue, unsigned long long _Index)
-        {
-            auto _FirstOriging = _FirstValue;
-            auto _NextOriging = _NextValue;
-
-            auto&& _FirstBinary = (_FirstValue - _Shift) / _Scale;
-            auto&& _NextBinary = (_NextValue - _Shift) / _Scale;
-
-            int _Firstint = static_cast<int>(floor(_FirstBinary));
-            int _Nextint = static_cast<int>(floor(_NextBinary));
-
-            auto&& _FirstMask = _Firstint & (_Index - 1);
-            auto&& _NextMask = _Nextint & (_Index - 1);
-
-            int _FirstintSwap = _Firstint - _FirstMask + _NextMask;
-            int _NextintSwap = _Nextint - _NextMask + _FirstMask;
-
-            auto&& _FirstCheak = _FirstintSwap * _Scale + _Shift;
-            auto&& _NextCheak = _NextintSwap * _Scale + _Shift;
-        }
-
-        // Do not use
-        decltype(auto) Encoding(_ValueType _Value)
-        {
-            auto&& _Integer = static_cast<unsigned long long>((_Value - _Shift) / _Scale);
-
-            std::vector<bool> _VectorBool(_EncodingDistribution.b() + 1);
-            for (auto&& __Bool : _VectorBool)
+            for (auto&& _Vector : _Child)
             {
-                __Bool = _Integer & 1;
-                _Integer >>= 1;
+                for (auto&& _Value : _Vector)
+                {
+                    auto&& _Mutation = _MutationDistribution(_Engine);
+                    if (_Mutation)
+                    {
+                        _Value += _DomainUniform(_Engine);
+                    }
+                }
             }
-
-            return _VectorBool;
         }
     };
 }

@@ -26,9 +26,9 @@ decltype(auto) Run(size_t _IteratorCount, Evolutionary<_BaseArgs...>& _Evolution
             cout << _Iterator << endl;
         }
 
-        if (0 == _Iterator % 1000)
+        if (0 == _Iterator % 100)
         {
-            _Evolutionary.Perturbing(20);
+            _Evolutionary.Perturbing(30);
         }
 
         auto _Result = _Evolutionary.GetGlobalExtremum();
@@ -43,8 +43,8 @@ int main(void)
 {
     using _Type = double;
 
-    size_t _Count = 2048;
-    size_t _IteratorCount = 6000;
+    size_t _Count = 2000;
+    size_t _IteratorCount = 10000;
     size_t _Dimension = 2;
     _Type _Min = -10.0;
     _Type _Max = 10.0;
@@ -89,17 +89,18 @@ int main(void)
 
 
     // GeneticAlgorithm
-    size_t _EncodingLength = 5;
+    size_t _ElitismSize = 10;
     double _CrossoverRate = 1.0;
+    double _MutationRate = 0.1;
     GeneticAlgorithm<_Type, less<>> _MyGA(
         _Count,
         _Dimension,
-        _EncodingLength,
+        _ElitismSize,
         _CrossoverRate,
+        _MutationRate,
         _Min,
         _Max,
-        TestFunction,
-        random_device()());
+        TestFunction);
     auto&& _MyGAExtremum = Run<_Type>(_IteratorCount, _MyGA);
 
     // End
