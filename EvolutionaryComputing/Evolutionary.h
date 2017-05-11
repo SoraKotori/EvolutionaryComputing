@@ -444,7 +444,7 @@ namespace evolutionary
         _VectorType<_VectorType<_ValueType>> _Child;
         _VectorType<_ValueType> _ParentFitness;
         _VectorType<_ValueType> _ChildFitness;
-        
+
         _SizeType _Elitism;
         _ValueType _Shift;
 
@@ -478,6 +478,11 @@ namespace evolutionary
             if (0 > _BestFitness)
             {
                 std::transform(std::begin(_ParentFitness), std::end(_ParentFitness), std::begin(_ParentFitness), std::negate<>());
+            }
+            else
+            {
+                using namespace std::placeholders;
+                std::transform(std::begin(_ParentFitness), std::end(_ParentFitness), std::begin(_ParentFitness), std::bind(std::divides<>(), 1, _1));
             }
 
             // It can't be less than 0 
